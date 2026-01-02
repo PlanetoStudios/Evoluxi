@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+
+<title>Evolux</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0a0a1a">
+
+<style>
+html, body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #0a0a1a;
+  touch-action: none;
+}
+
+canvas {
+  display: block;
+}
+
+/* Joystick */
+#joystick {
+  position: fixed;
+  bottom: 30px;
+  left: 30px;
+  width: 120px;
+  height: 120px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 50%;
+}
+
+#stick {
+  position: absolute;
+  left: 40px;
+  top: 40px;
+  width: 40px;
+  height: 40px;
+  background: rgba(0,255,255,0.8);
+  border-radius: 50%;
+}
+</style>
+</head>
+
+<body>
+<canvas id="game"></canvas>
+
+<div id="joystick">
+  <div id="stick"></div>
+</div>
+
+<script>
+// ===== CANVAS =====
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener("resize", resize);
+
+// ===== PLAYER =====
+const player = {
+  x: canvas.width / 2,
+  y: canvas.height / 2,
+  r: 15,
+  speed: 2,
+  dx: 0,
+  dy: 0,
+  xp: 0
+};
+
+// ===== FOOD =====
+const food = [];
+for (let i = 0; i < 50; i++) {
+  food.push({
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height,
+    r: 5
+  });
+}
+
+// ===== JOYSTICK =====
+const joystick = document.getElementById("joystick");
+const stick = document.getElementById("stick");
+
+let dragging = false;
+
+joystick.addEventListener("touchstart", () => dragging = true);
+
+joystick.addEventListener("touchmove", e => {
+  if (!dragging) return;
+  const rect = joystick.getBoundingClientRect();
+  const touch = e.touches[0];
+
+  let joyX = touch.clientX - rect.left - 60;
+  let joyY = touch.clientY - rect.top - 60;
+
+  const dist = Math.hypot(joyX, joyY);
+  if (dist > 40) {
+    joyX *= 40 / dist;
+    joyY *= 40 / dist;
+  }
+
+  stick.style.left = joyX + 40 + "px";
+  stick.style.top = joyY + 40 + "px";
+
+  player.dx = joyX / 40;
+  player.dy = joyY / 40;
+});
+
+joystick.addEventListener("touchend", () => {
+  dragging = false;
+  stick.style.left = "40px";
+  stick.style.top = "40px";
+  player.dx = player.dy = 0;
+});
+
+// ===== GAME LOOP =====
+function update() {
+  player.x += player.dx * player.speed;
+  player.y += player.dy * player.speed;
+
+  player.x = Math.max(player.r, Math.min(canvas.width - player.r, player.x));
+  player.y = Math.max(player.r, Math.min(canvas.height - player.r, player.y));
+
+  for (let i = food.length - 1; i >= 0; i--) {
+    const f = food[i];
+    const d = Math.hypot(player.x - f.x, player.y - f.y);
+    if (d < player.r + f.r) {
+      food.splice(i, 1);
+      player.xp++;
+      player.r += 0.4;
+
+      food.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        r: 5
+      });
+    }
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "#00ff88";
+  food.forEach(f => {
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = "#00ffff";
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#fff";
+  ctx.font = "16px sans-serif";
+  ctx.fillText("Evolux • Evolução: " + player.xp, 10, 25);
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+
+// ===== PWA =====
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js");
+}
+</script>
+</body>
+</html>
