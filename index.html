@@ -3,23 +3,29 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-
 <title>Evolux</title>
 
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0a0a1a">
+<meta name="theme-color" content="#120022">
 
 <style>
 html, body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background: #0a0a1a;
+  background: radial-gradient(#180033, #05000a);
   touch-action: none;
 }
 
-canvas {
-  display: block;
+canvas { display: block; }
+
+/* UI */
+#ui {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  color: #fff;
+  font-family: sans-serif;
 }
 
 /* Joystick */
@@ -32,15 +38,30 @@ canvas {
   background: rgba(255,255,255,0.1);
   border-radius: 50%;
 }
-
 #stick {
   position: absolute;
   left: 40px;
   top: 40px;
   width: 40px;
   height: 40px;
-  background: rgba(0,255,255,0.8);
+  background: #00ffee;
   border-radius: 50%;
+}
+
+/* Attack Button */
+#attack {
+  position: fixed;
+  bottom: 40px;
+  right: 40px;
+  width: 80px;
+  height: 80px;
+  background: rgba(255,0,80,0.8);
+  border-radius: 50%;
+  color: white;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 </style>
 </head>
@@ -48,125 +69,188 @@ canvas {
 <body>
 <canvas id="game"></canvas>
 
-<div id="joystick">
-  <div id="stick"></div>
-</div>
+<div id="ui"></div>
+
+<div id="joystick"><div id="stick"></div></div>
+<div id="attack">ATAQUE</div>
 
 <script>
-// ===== CANVAS =====
+// ===== CANVAS & CAMERA =====
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+function resize(){
+  canvas.width = innerWidth;
+  canvas.height = innerHeight;
 }
 resize();
-window.addEventListener("resize", resize);
+addEventListener("resize", resize);
+
+const camera = { x: 0, y: 0 };
 
 // ===== PLAYER =====
 const player = {
-  x: canvas.width / 2,
-  y: canvas.height / 2,
-  r: 15,
+  x: 0,
+  y: 0,
+  r: 14,
   speed: 2,
   dx: 0,
   dy: 0,
-  xp: 0
+  xp: 0,
+  hp: 100,
+  stage: "Célula",
+  abilities: {
+    speed: 0,
+    spikes: false,
+    poison: false
+  }
 };
+
+// ===== INIMIGOS (IA) =====
+const enemies = [];
+for (let i = 0; i < 15; i++) spawnEnemy();
+
+function spawnEnemy(){
+  enemies.push({
+    x: Math.random()*2000 - 1000,
+    y: Math.random()*2000 - 1000,
+    r: 12,
+    hp: 30,
+    speed: 1.2
+  });
+}
 
 // ===== FOOD =====
 const food = [];
-for (let i = 0; i < 50; i++) {
+function spawnFood(){
   food.push({
-    x: Math.random() * canvas.width,
-    y: Math.random() * canvas.height,
-    r: 5
+    x: Math.random()*2000 - 1000,
+    y: Math.random()*2000 - 1000,
+    r: 4
   });
 }
+for(let i=0;i<80;i++) spawnFood();
 
 // ===== JOYSTICK =====
 const joystick = document.getElementById("joystick");
 const stick = document.getElementById("stick");
+let dragging=false;
 
-let dragging = false;
+joystick.addEventListener("touchstart",()=>dragging=true);
+joystick.addEventListener("touchmove",e=>{
+  if(!dragging)return;
+  const r=joystick.getBoundingClientRect();
+  const t=e.touches[0];
+  let x=t.clientX-r.left-60;
+  let y=t.clientY-r.top-60;
+  const d=Math.hypot(x,y);
+  if(d>40){x*=40/d;y*=40/d;}
+  stick.style.left=x+40+"px";
+  stick.style.top=y+40+"px";
+  player.dx=x/40;
+  player.dy=y/40;
+});
+joystick.addEventListener("touchend",()=>{
+  dragging=false;
+  stick.style.left="40px";
+  stick.style.top="40px";
+  player.dx=player.dy=0;
+});
 
-joystick.addEventListener("touchstart", () => dragging = true);
+// ===== ATTACK =====
+document.getElementById("attack").addEventListener("touchstart",()=>{
+  enemies.forEach(e=>{
+    const d=Math.hypot(player.x-e.x,player.y-e.y);
+    if(d<player.r+25){
+      e.hp-=player.abilities.poison?20:10;
+    }
+  });
+});
 
-joystick.addEventListener("touchmove", e => {
-  if (!dragging) return;
-  const rect = joystick.getBoundingClientRect();
-  const touch = e.touches[0];
+// ===== UPDATE =====
+function update(){
+  player.x+=player.dx*(player.speed+player.abilities.speed);
+  player.y+=player.dy*(player.speed+player.abilities.speed);
 
-  let joyX = touch.clientX - rect.left - 60;
-  let joyY = touch.clientY - rect.top - 60;
+  camera.x=player.x-canvas.width/2;
+  camera.y=player.y-canvas.height/2;
 
-  const dist = Math.hypot(joyX, joyY);
-  if (dist > 40) {
-    joyX *= 40 / dist;
-    joyY *= 40 / dist;
+  // Comer
+  for(let i=food.length-1;i>=0;i--){
+    const f=food[i];
+    if(Math.hypot(player.x-f.x,player.y-f.y)<player.r){
+      food.splice(i,1);
+      player.xp++;
+      spawnFood();
+      if(player.xp%5===0) player.r+=0.6;
+    }
   }
 
-  stick.style.left = joyX + 40 + "px";
-  stick.style.top = joyY + 40 + "px";
+  // Evolução
+  if(player.xp===20){ player.stage="Criatura"; player.abilities.speed=1; }
+  if(player.xp===40){ player.stage="Tribo"; player.abilities.spikes=true; }
 
-  player.dx = joyX / 40;
-  player.dy = joyY / 40;
-});
+  // IA inimigos
+  enemies.forEach(e=>{
+    const d=Math.hypot(player.x-e.x,player.y-e.y);
+    if(d<200){
+      e.x+=(player.x-e.x)/d*e.speed;
+      e.y+=(player.y-e.y)/d*e.speed;
+    }
+    if(d<player.r+e.r){
+      player.hp-=0.3;
+      if(player.abilities.spikes) e.hp-=0.5;
+    }
+  });
 
-joystick.addEventListener("touchend", () => {
-  dragging = false;
-  stick.style.left = "40px";
-  stick.style.top = "40px";
-  player.dx = player.dy = 0;
-});
-
-// ===== GAME LOOP =====
-function update() {
-  player.x += player.dx * player.speed;
-  player.y += player.dy * player.speed;
-
-  player.x = Math.max(player.r, Math.min(canvas.width - player.r, player.x));
-  player.y = Math.max(player.r, Math.min(canvas.height - player.r, player.y));
-
-  for (let i = food.length - 1; i >= 0; i--) {
-    const f = food[i];
-    const d = Math.hypot(player.x - f.x, player.y - f.y);
-    if (d < player.r + f.r) {
-      food.splice(i, 1);
-      player.xp++;
-      player.r += 0.4;
-
-      food.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        r: 5
-      });
+  // Remover mortos
+  for(let i=enemies.length-1;i>=0;i--){
+    if(enemies[i].hp<=0){
+      enemies.splice(i,1);
+      spawnEnemy();
     }
   }
 }
 
-function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+// ===== DRAW =====
+function draw(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.save();
+  ctx.translate(-camera.x,-camera.y);
 
-  ctx.fillStyle = "#00ff88";
-  food.forEach(f => {
+  // Food
+  ctx.fillStyle="#00ff99";
+  food.forEach(f=>{
     ctx.beginPath();
-    ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+    ctx.arc(f.x,f.y,f.r,0,Math.PI*2);
     ctx.fill();
   });
 
-  ctx.fillStyle = "#00ffff";
+  // Enemies
+  ctx.fillStyle="#ff0066";
+  enemies.forEach(e=>{
+    ctx.beginPath();
+    ctx.arc(e.x,e.y,e.r,0,Math.PI*2);
+    ctx.fill();
+  });
+
+  // Player
+  ctx.fillStyle="#00ffff";
   ctx.beginPath();
-  ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+  ctx.arc(player.x,player.y,player.r,0,Math.PI*2);
   ctx.fill();
 
-  ctx.fillStyle = "#fff";
-  ctx.font = "16px sans-serif";
-  ctx.fillText("Evolux • Evolução: " + player.xp, 10, 25);
+  ctx.restore();
+
+  document.getElementById("ui").innerHTML =
+    `Evolux<br>
+     Fase: ${player.stage}<br>
+     XP: ${player.xp}<br>
+     HP: ${Math.floor(player.hp)}`;
 }
 
-function loop() {
+// ===== LOOP =====
+function loop(){
   update();
   draw();
   requestAnimationFrame(loop);
@@ -174,7 +258,7 @@ function loop() {
 loop();
 
 // ===== PWA =====
-if ("serviceWorker" in navigator) {
+if("serviceWorker"in navigator){
   navigator.serviceWorker.register("sw.js");
 }
 </script>
